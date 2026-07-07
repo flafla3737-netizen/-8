@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>장서 대장 · 도서 구입 기록부</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700;900&family=Noto+Sans+KR:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-app-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --leather: #1b3a2f;
+    --leather-dark: #12271f;
+    --parchment: #efe6d2;
+    --parchment-line: #d9cba9;
+    --ink: #2b2118;
+    --ink-soft: #5a4d3c;
+    --brass: #a9812c;
+    --brass-light: #c9a84c;
+    --stamp-red: #8b2e2e;
+    --stamp-red-dark: #6e2323;
+    --paper-shadow: rgba(27,58,47,0.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: var(--parchment);
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(169,129,44,0.06), transparent 40%),
+      radial-gradient(circle at 90% 80%, rgba(139,46,46,0.05), transparent 45%);
+    font-family:'Noto Sans KR', sans-serif;
+    color: var(--ink);
+    min-height:100vh;
+  }
+  .app{
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+  /* header */
+  .masthead{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    border-bottom: 3px double var(--leather);
+    padding-bottom: 14px;
+    margin-bottom: 26px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .masthead .title-block{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  .eyebrow{
+    font-family:'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--brass);
+    text-transform: uppercase;
+  }
+  h1{
+    font-family:'Noto Serif KR', serif;
+    font-weight:900;
+    font-size: 30px;
+    margin: 0;
+    color: var(--leather);
+    letter-spacing: -0.5px;
+  }
+  .subtitle{
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .nav-btn{
+    font-family:'Noto Serif KR', serif;
+    font-weight:700;
+    font-size: 14px;
+    background: var(--leather);
+    color: var(--parchment);
+    border: none;
+    padding: 12px 20px;
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 var(--leather-dark);
+    transition: transform .12s ease, box-shadow .12s ease;
+    white-space: nowrap;
+  }
+  .nav-btn:hover{ transform: translateY(-1px); }
+  .nav-btn:active{ transform: translateY(2px); box-shadow: 0 1px 0 var(--leather-dark); }
+
+  /* card / index card look */
+  .card{
+    background: #fbf8ef;
+    border: 1px solid var(--parchment-line);
+    border-radius: 4px;
+    box-shadow: 0 6px 18px var(--paper-shadow);
+    padding: 26px;
+    position: relative;
+  }
+  .card::before{
+    content:"";
+    position:absolute;
+    left: 46px; top:0; bottom:0;
+    width: 1px;
+    background: rgba(139,46,46,0.18);
+    pointer-events:none;
+  }
+  .card::after{
+    content:"";
+    position:absolute;
+    left: 0; right: 0; top: 0; bottom:0;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 30px,
+      rgba(90,77,60,0.08) 31px
+    );
+    pointer-events:none;
+    border-radius: 4px;
+  }
+  .card-inner{ position:relative; padding-left: 20px; z-index:1; }
+
+  .form-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 24px;
+    position: relative;
+    z-index:1;
+    padding-left: 20px;
+  }
+  .field{ display:flex; flex-direction:column; gap:6px; }
+  .field.full{ grid-column: 1 / -1; }
+  label{
+    font-family:'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  input{
+    font-family:'Noto Sans KR', sans-serif;
+    font-size: 15px;
+    padding: 9px 4px;
+    border: none;
+    border-bottom: 1px solid var(--parchment-line);
+    background: transparent;
+    color: var(--ink);
+    outline: none;
+  }
+  input:focus{ border-bottom: 2px solid var(--brass); }
+  .required-mark{ color: var(--stamp-red); margin-left:2px; }
+
+  .form-actions{
+    display:flex;
+    align-items:center;
+    gap: 14px;
+    margin-top: 22px;
+    padding-left: 20px;
+    position:relative; z-index:1;
+    flex-wrap: wrap;
+  }
+  .btn{
+    font-family:'Noto Serif KR', serif;
+    font-weight:700;
+    font-size: 14px;
+    padding: 11px 22px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: none;
+  }
+  .btn-primary{
+    background: var(--stamp-red);
+    color: #fbf8ef;
+    box-shadow: 0 3px 0 var(--stamp-red-dark);
+  }
+  .btn-primary:hover{ transform: translateY(-1px); }
+  .btn-primary:active{ transform: translateY(2px); box-shadow:none; }
+  .btn-ghost{
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--parchment-line);
+  }
+  .warn-msg{
+    font-size: 13px;
+    color: var(--stamp-red);
+    font-weight: 500;
+    display:none;
+    align-items:center;
+    gap:6px;
+  }
+  .warn-msg.show{ display:flex; }
+  .ok-msg{
+    font-size: 13px;
+    color: var(--leather);
+    font-weight: 500;
+    display:none;
+    align-items:center;
+    gap:6px;
+  }
+  .ok-msg.show{ display:flex; }
+
+  .count-plate{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-family:'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--brass);
+    border: 1px solid var(--brass-light);
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-top: 18px;
+  }
+
+  /* LIST VIEW */
+  .list-toolbar{
+    display:flex;
+    justify-content: space-between;
+    align-items:center;
+    margin-bottom: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .list-toolbar .stamp-count{
+    font-family:'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .table-wrap{
+    background: #fbf8ef;
+    border: 1px solid var(--parchment-line);
+    border-radius: 4px;
+    box-shadow: 0 6px 18px var(--paper-shadow);
+    overflow-x: auto;
+  }
+  table{
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 860px;
+  }
+  thead th{
+    font-family:'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--parchment);
+    background: var(--leather);
+    text-align: left;
+    padding: 12px 10px;
+    position: sticky;
+    top: 0;
+  }
+  tbody td{
+    padding: 10px;
+    border-bottom: 1px solid var(--parchment-line);
+    font-size: 14px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  thead th{
+    white-space: nowrap;
+  }
+  tbody tr:hover{ background: rgba(169,129,44,0.06); }
+  .no-cell{
+    font-family:'Space Mono', monospace;
+    color: var(--brass);
+    font-weight: 700;
+    width: 46px;
+  }
+  .price-cell{ font-family:'Space Mono', monospace; text-align:right; }
+  td input{
+    width: 100%;
+    font-size: 14px;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--parchment-line);
+  }
+  .row-actions{ display:flex; gap:6px; white-space:nowrap; }
+  .icon-btn{
+    font-family:'Noto Sans KR', sans-serif;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--parchment-line);
+    background: transparent;
+    cursor: pointer;
+    color: var(--ink-soft);
+  }
+  .icon-btn.edit{ color: var(--leather); border-color: var(--leather); }
+  .icon-btn.save{ color: #fff; background: var(--leather); border-color: var(--leather); }
+  .icon-btn.delete{ color: var(--stamp-red); border-color: var(--stamp-red); }
+  .icon-btn:hover{ opacity: 0.8; }
+
+  .empty-state{
+    padding: 60px 20px;
+    text-align:center;
+    color: var(--ink-soft);
+  }
+  .empty-state .stamp{
+    display:inline-block;
+    font-family:'Noto Serif KR', serif;
+    font-weight:900;
+    font-size: 15px;
+    color: var(--brass-light);
+    border: 2px solid var(--brass-light);
+    border-radius: 6px;
+    padding: 10px 18px;
+    transform: rotate(-4deg);
+    margin-bottom: 14px;
+  }
+
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  @media (max-width: 640px){
+    .form-grid{ grid-template-columns: 1fr; padding-left: 4px; }
+    .card::before{ display:none; }
+    .card-inner{ padding-left: 0; }
+    h1{ font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="masthead">
+    <div class="title-block">
+      <span class="eyebrow">Personal Acquisition Ledger</span>
+      <h1>장서 대장</h1>
+      <span class="subtitle">책을 살 때마다 한 줄씩 — 도서명, 저자, 값을 남깁니다</span>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="nav-btn" id="navBtn" onclick="toggleView()">새 도서 입력</button>
+      <button class="icon-btn" id="settingsBtn" onclick="openSettings()" title="동기화 설정" style="padding:11px 12px; font-size:16px;">⚙</button>
+    </div>
+  </div>
+
+  <!-- SETUP / SETTINGS VIEW -->
+  <div class="view" id="setupView">
+    <div class="card">
+      <div class="card-inner" style="padding-left:0;">
+        <h2 style="font-family:'Noto Serif KR',serif; margin-top:0; color:var(--leather);">기기 간 동기화 설정</h2>
+        <p style="font-size:14px; color:var(--ink-soft); line-height:1.7;">
+          Firebase 프로젝트의 <b>firebaseConfig</b> 값을 아래에 붙여넣으면, 이 화면에서 입력한 도서 목록이 같은 설정을 넣은 모든 기기(PC, 폰 등)에서 실시간으로 동기화됩니다.<br>
+          예: <code>{"apiKey": "...", "authDomain": "...", "projectId": "...", ...}</code>
+        </p>
+        <textarea id="firebaseConfigInput" placeholder='여기에 firebaseConfig 객체를 붙여넣으세요 (예: {"apiKey":"...", "authDomain":"...", "projectId":"...", "storageBucket":"...", "messagingSenderId":"...", "appId":"..."})' style="width:100%; min-height:140px; font-family:'Space Mono',monospace; font-size:13px; padding:12px; border:1px solid var(--parchment-line); border-radius:4px; background:#fffdf7; color:var(--ink);"></textarea>
+        <div style="display:flex; gap:12px; margin-top:16px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="saveFirebaseConfig()">저장하고 동기화 시작</button>
+          <button class="btn btn-ghost" id="cancelSetupBtn" onclick="closeSettings()" style="display:none;">취소</button>
+          <span id="setupMsg" style="font-size:13px; color:var(--stamp-red);"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FORM VIEW -->
+  <div class="view" id="formView">
+    <div class="card">
+      <div class="card-inner">
+        <div class="form-grid">
+          <div class="field">
+            <label>도서명<span class="required-mark">*</span></label>
+            <input id="f_title" type="text" placeholder="예: 원가관리회계의 이해">
+          </div>
+          <div class="field">
+            <label>저자<span class="required-mark">*</span></label>
+            <input id="f_author" type="text" placeholder="예: 홍길동">
+          </div>
+          <div class="field">
+            <label>역자</label>
+            <input id="f_translator" type="text" placeholder="번역서가 아니면 비워두세요">
+          </div>
+          <div class="field">
+            <label>출판사</label>
+            <input id="f_publisher" type="text" placeholder="예: 삼일인포마인">
+          </div>
+          <div class="field">
+            <label>출판연도</label>
+            <input id="f_year" type="text" inputmode="numeric" placeholder="예: 2026">
+          </div>
+          <div class="field">
+            <label>구입가</label>
+            <input id="f_price" type="text" inputmode="numeric" placeholder="예: 28000">
+          </div>
+          <div class="field full">
+            <label>기타</label>
+            <input id="f_etc" type="text" placeholder="메모, 구입처, 상태 등">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="addBook()">장부에 기록</button>
+          <button class="btn btn-ghost" onclick="clearForm()">입력 지우기</button>
+          <span class="warn-msg" id="dupWarn">⚠ 이미 등록된 도서입니다 (도서명·저자 일치)</span>
+          <span class="ok-msg" id="addOk">✓ 기록되었습니다</span>
+        </div>
+        <div class="count-plate" id="countPlate">등록된 도서 0권</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIST VIEW -->
+  <div class="view active" id="listView">
+    <div class="list-toolbar">
+      <span class="stamp-count" id="listCount">총 0권</span>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-ghost" onclick="downloadExcel()">엑셀로 다운로드</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>No.</th>
+            <th>도서명</th>
+            <th>저자</th>
+            <th>역자</th>
+            <th>출판사</th>
+            <th>출판연도</th>
+            <th>구입가</th>
+            <th>기타</th>
+            <th>작업</th>
+          </tr>
+        </thead>
+        <tbody id="listBody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" style="display:none;">
+        <div class="stamp">EMPTY</div>
+        <div>아직 기록된 책이 없습니다. 입력 화면에서 첫 책을 기록해보세요.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let books = [];
+let editingId = null;
+let deleteConfirmId = null;
+
+const CONFIG_KEY = 'book_ledger_firebase_config';
+let db = null;
+let booksCollection = null;
+let unsubscribeSnapshot = null;
+
+function toggleView(){
+  const formView = document.getElementById('formView');
+  const listView = document.getElementById('listView');
+  const setupView = document.getElementById('setupView');
+  const navBtn = document.getElementById('navBtn');
+  setupView.classList.remove('active');
+  const showingForm = formView.classList.contains('active');
+  if(showingForm){
+    formView.classList.remove('active');
+    listView.classList.add('active');
+    navBtn.textContent = '새 도서 입력';
+    renderList();
+  } else {
+    listView.classList.remove('active');
+    formView.classList.add('active');
+    navBtn.textContent = '도서목록 보기';
+  }
+}
+
+function openSettings(){
+  document.getElementById('formView').classList.remove('active');
+  document.getElementById('listView').classList.remove('active');
+  document.getElementById('setupView').classList.add('active');
+  const saved = localStorage.getItem(CONFIG_KEY);
+  if(saved){
+    document.getElementById('firebaseConfigInput').value = saved;
+    document.getElementById('cancelSetupBtn').style.display = 'inline-block';
+  }
+}
+
+function closeSettings(){
+  document.getElementById('setupView').classList.remove('active');
+  document.getElementById('listView').classList.add('active');
+  document.getElementById('navBtn').textContent = '새 도서 입력';
+}
+
+function saveFirebaseConfig(){
+  const raw = document.getElementById('firebaseConfigInput').value.trim();
+  const msg = document.getElementById('setupMsg');
+  let parsed;
+  try{
+    // allow pasting either valid JSON or a JS object literal (unquoted keys)
+    parsed = JSON.parse(raw);
+  }catch(e){
+    try{
+      parsed = (new Function('return (' + raw + ')'))();
+    }catch(e2){
+      msg.textContent = '⚠ 형식을 읽을 수 없습니다. firebaseConfig 객체를 그대로 붙여넣어주세요.';
+      return;
+    }
+  }
+  if(!parsed || !parsed.apiKey || !parsed.projectId){
+    msg.textContent = '⚠ apiKey, projectId 등이 포함된 firebaseConfig가 맞는지 확인해주세요.';
+    return;
+  }
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(parsed));
+  msg.textContent = '';
+  initFirebase(parsed);
+  document.getElementById('setupView').classList.remove('active');
+  document.getElementById('listView').classList.add('active');
+  document.getElementById('navBtn').textContent = '새 도서 입력';
+}
+
+function initFirebase(config){
+  try{
+    if(!firebase.apps.length){
+      firebase.initializeApp(config);
+    }
+    db = firebase.firestore();
+    booksCollection = db.collection('books');
+    subscribeBooks();
+  }catch(e){
+    console.error('Firebase 초기화 오류', e);
+    showToast('⚠ 동기화 설정을 다시 확인해주세요.');
+  }
+}
+
+function subscribeBooks(){
+  if(unsubscribeSnapshot) unsubscribeSnapshot();
+  unsubscribeSnapshot = booksCollection.orderBy('order').onSnapshot(snapshot => {
+    books = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderForm();
+    if(editingId === null && deleteConfirmId === null){
+      renderList();
+    }
+  }, err => {
+    console.error('동기화 오류', err);
+    showToast('⚠ 동기화 오류가 발생했습니다. 설정을 확인해주세요.');
+  });
+}
+
+function bootApp(){
+  const saved = localStorage.getItem(CONFIG_KEY);
+  if(saved){
+    try{
+      initFirebase(JSON.parse(saved));
+    }catch(e){
+      openSettings();
+      return;
+    }
+    document.getElementById('listView').classList.add('active');
+  } else {
+    openSettings();
+  }
+  renderForm();
+  renderList();
+}
+
+function normalize(s){
+  return (s || '').trim().toLowerCase().replace(/\s+/g,'');
+}
+
+function isDuplicate(title, author, excludeId){
+  const nt = normalize(title), na = normalize(author);
+  return books.some(b => b.id !== excludeId && normalize(b.title) === nt && normalize(b.author) === na);
+}
+
+function clearForm(){
+  ['f_title','f_author','f_translator','f_publisher','f_year','f_price','f_etc'].forEach(id=>{
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('dupWarn').classList.remove('show');
+  document.getElementById('addOk').classList.remove('show');
+}
+
+async function addBook(){
+  const title = document.getElementById('f_title').value.trim();
+  const author = document.getElementById('f_author').value.trim();
+  const translator = document.getElementById('f_translator').value.trim();
+  const publisher = document.getElementById('f_publisher').value.trim();
+  const year = document.getElementById('f_year').value.trim();
+  const price = document.getElementById('f_price').value.trim();
+  const etc = document.getElementById('f_etc').value.trim();
+
+  const dupWarn = document.getElementById('dupWarn');
+  const addOk = document.getElementById('addOk');
+  addOk.classList.remove('show');
+
+  if(!booksCollection){
+    showToast('⚠ 먼저 ⚙ 버튼에서 동기화 설정을 완료해주세요.');
+    return;
+  }
+
+  if(!title){
+    showToast('도서명을 입력해주세요.');
+    return;
+  }
+
+  if(isDuplicate(title, author, null)){
+    dupWarn.classList.add('show');
+    return;
+  }
+  dupWarn.classList.remove('show');
+
+  try{
+    await booksCollection.add({
+      title, author, translator, publisher, year, price, etc,
+      order: Date.now()
+    });
+    addOk.classList.add('show');
+    clearForm();
+  }catch(e){
+    console.error('저장 오류', e);
+    showToast('⚠ 저장에 실패했습니다. 동기화 설정을 확인해주세요.');
+  }
+}
+
+function renderForm(){
+  document.getElementById('countPlate').textContent = `등록된 도서 ${books.length}권`;
+}
+
+function formatPrice(p){
+  const n = Number(String(p).replace(/[^0-9]/g,''));
+  if(!n) return p || '';
+  return n.toLocaleString('ko-KR');
+}
+
+function renderList(){
+  const body = document.getElementById('listBody');
+  const empty = document.getElementById('emptyState');
+  document.getElementById('listCount').textContent = `총 ${books.length}권`;
+  body.innerHTML = '';
+
+  if(books.length === 0){
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  books.forEach((b, idx) => {
+    const tr = document.createElement('tr');
+    const isEditing = editingId === b.id;
+    const isConfirmingDelete = deleteConfirmId === b.id;
+
+    let actionsHtml;
+    if(isConfirmingDelete){
+      actionsHtml = `
+        <td class="row-actions">
+          <span style="font-size:12px;color:var(--stamp-red);margin-right:4px;">삭제할까요?</span>
+          <button class="icon-btn delete" onclick="confirmDeleteBook('${b.id}')">확인</button>
+          <button class="icon-btn" onclick="cancelDeleteBook()">취소</button>
+        </td>
+      `;
+    } else if(isEditing){
+      actionsHtml = `
+        <td class="row-actions">
+          <button class="icon-btn save" onclick="saveRow('${b.id}')">저장</button>
+          <button class="icon-btn" onclick="cancelEdit()">취소</button>
+          <button class="icon-btn delete" onclick="deleteBook('${b.id}')">삭제</button>
+        </td>
+      `;
+    } else {
+      actionsHtml = `
+        <td class="row-actions">
+          <button class="icon-btn edit" onclick="editRow('${b.id}')">수정</button>
+          <button class="icon-btn delete" onclick="deleteBook('${b.id}')">삭제</button>
+        </td>
+      `;
+    }
+
+    if(isEditing && !isConfirmingDelete){
+      tr.innerHTML = `
+        <td class="no-cell">${idx+1}</td>
+        <td><input value="${escapeHtml(b.title)}" data-field="title"></td>
+        <td><input value="${escapeHtml(b.author)}" data-field="author"></td>
+        <td><input value="${escapeHtml(b.translator)}" data-field="translator"></td>
+        <td><input value="${escapeHtml(b.publisher)}" data-field="publisher"></td>
+        <td><input value="${escapeHtml(b.year)}" data-field="year" style="width:70px;"></td>
+        <td><input value="${escapeHtml(b.price)}" data-field="price" style="width:90px;"></td>
+        <td><input value="${escapeHtml(b.etc)}" data-field="etc"></td>
+        ${actionsHtml}
+      `;
+    } else {
+      tr.innerHTML = `
+        <td class="no-cell">${idx+1}</td>
+        <td>${escapeHtml(b.title)}</td>
+        <td>${escapeHtml(b.author)}</td>
+        <td>${escapeHtml(b.translator)}</td>
+        <td>${escapeHtml(b.publisher)}</td>
+        <td>${escapeHtml(b.year)}</td>
+        <td class="price-cell">${b.price ? formatPrice(b.price) : ''}</td>
+        <td>${escapeHtml(b.etc)}</td>
+        ${actionsHtml}
+      `;
+    }
+    body.appendChild(tr);
+  });
+}
+
+function escapeHtml(s){
+  if(s === undefined || s === null) return '';
+  return String(s)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;');
+}
+
+function editRow(id){
+  editingId = id;
+  renderList();
+}
+
+function cancelEdit(){
+  editingId = null;
+  renderList();
+}
+
+async function saveRow(id){
+  const tr = [...document.querySelectorAll('#listBody tr')].find(row => row.querySelector('.icon-btn.save'));
+  const inputs = tr.querySelectorAll('input[data-field]');
+  const updated = {};
+  inputs.forEach(inp => updated[inp.dataset.field] = inp.value.trim());
+
+  if(!updated.title){
+    showToast('도서명은 비워둘 수 없습니다.');
+    return;
+  }
+  if(isDuplicate(updated.title, updated.author, id)){
+    showToast('도서명·저자가 동일한 항목이 이미 있습니다.');
+    return;
+  }
+
+  editingId = null;
+  try{
+    await booksCollection.doc(id).update(updated);
+  }catch(e){
+    console.error('저장 오류', e);
+    showToast('⚠ 저장에 실패했습니다.');
+  }
+  renderList();
+}
+
+function deleteBook(id){
+  deleteConfirmId = id;
+  editingId = null;
+  renderList();
+}
+
+function cancelDeleteBook(){
+  deleteConfirmId = null;
+  renderList();
+}
+
+async function confirmDeleteBook(id){
+  deleteConfirmId = null;
+  try{
+    await booksCollection.doc(id).delete();
+  }catch(e){
+    console.error('삭제 오류', e);
+    showToast('⚠ 삭제에 실패했습니다.');
+  }
+  renderList();
+}
+
+function showToast(msg){
+  let toast = document.getElementById('toastMsg');
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id = 'toastMsg';
+    toast.style.cssText = `
+      position:fixed; top:18px; left:50%; transform:translateX(-50%);
+      background:var(--leather); color:var(--parchment);
+      font-family:'Noto Sans KR',sans-serif; font-size:13px; font-weight:500;
+      padding:10px 18px; border-radius:4px; box-shadow:0 4px 14px rgba(0,0,0,0.25);
+      z-index:9999; opacity:0; transition:opacity .2s ease;
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(()=>{ toast.style.opacity = '0'; }, 2200);
+}
+
+function downloadExcel(){
+  if(books.length === 0){
+    showToast('다운로드할 책이 없습니다.');
+    return;
+  }
+  const rows = books.map((b, idx) => ({
+    '번호': idx + 1,
+    '도서명': b.title || '',
+    '저자': b.author || '',
+    '역자': b.translator || '',
+    '출판사': b.publisher || '',
+    '출판연도': b.year || '',
+    '구입가': b.price ? Number(String(b.price).replace(/[^0-9]/g,'')) : '',
+    '기타': b.etc || ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:6},{wch:28},{wch:14},{wch:14},{wch:18},{wch:10},{wch:12},{wch:24}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '도서목록');
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `장서대장_${today}.xlsx`);
+}
+
+bootApp();
+</script>
+</body>
+</html>
