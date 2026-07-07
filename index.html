@@ -333,6 +333,10 @@
       <span class="subtitle">책을 살 때마다 한 줄씩 — 도서명, 저자, 값을 남깁니다</span>
     </div>
     <div style="display:flex; gap:8px; align-items:center;">
+      <span id="syncStatus" style="font-family:'Space Mono',monospace; font-size:11px; color:var(--ink-soft); display:flex; align-items:center; gap:5px;">
+        <span id="syncDot" style="width:8px; height:8px; border-radius:50%; background:#999; display:inline-block;"></span>
+        <span id="syncLabel">연결 확인 중</span>
+      </span>
       <button class="nav-btn" id="navBtn" onclick="toggleView()">새 도서 입력</button>
       <button class="icon-btn" id="settingsBtn" onclick="openSettings()" title="동기화 설정" style="padding:11px 12px; font-size:16px;">⚙</button>
     </div>
@@ -443,6 +447,18 @@ let editingId = null;
 let deleteConfirmId = null;
 
 const CONFIG_KEY = 'book_ledger_firebase_config';
+
+// 이 값이 채워져 있으면 어떤 브라우저/기기에서 열어도 별도 설정 없이
+// 바로 같은 Firestore 프로젝트에 자동으로 연결됩니다.
+const HARDCODED_CONFIG = {
+  apiKey: "AIzaSyAXx7MnNBfSTrq-7fNeMpJf4hCTTEUyODg",
+  authDomain: "book-list-59668.firebaseapp.com",
+  projectId: "book-list-59668",
+  storageBucket: "book-list-59668.firebasestorage.app",
+  messagingSenderId: "810523227015",
+  appId: "1:810523227015:web:6dca8595a3e0c141241922",
+  measurementId: "G-NR66Q61YQY"
+};
 let db = null;
 let booksCollection = null;
 let unsubscribeSnapshot = null;
@@ -510,6 +526,15 @@ function saveFirebaseConfig(){
   document.getElementById('navBtn').textContent = '새 도서 입력';
 }
 
+function setSyncStatus(state, label){
+  const dot = document.getElementById('syncDot');
+  const text = document.getElementById('syncLabel');
+  if(!dot || !text) return;
+  const colors = { ok: '#2e7d32', error: 'var(--stamp-red)', pending: '#999' };
+  dot.style.background = colors[state] || '#999';
+  text.textContent = label;
+}
+
 function initFirebase(config){
   try{
     if(!firebase.apps.length){
@@ -517,9 +542,11 @@ function initFirebase(config){
     }
     db = firebase.firestore();
     booksCollection = db.collection('books');
+    setSyncStatus('pending', '연결 확인 중');
     subscribeBooks();
   }catch(e){
     console.error('Firebase 초기화 오류', e);
+    setSyncStatus('error', '연결 실패');
     showToast('⚠ 동기화 설정을 다시 확인해주세요.');
   }
 }
@@ -528,27 +555,33 @@ function subscribeBooks(){
   if(unsubscribeSnapshot) unsubscribeSnapshot();
   unsubscribeSnapshot = booksCollection.orderBy('order').onSnapshot(snapshot => {
     books = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    setSyncStatus('ok', '동기화 중');
     renderForm();
     if(editingId === null && deleteConfirmId === null){
       renderList();
     }
   }, err => {
     console.error('동기화 오류', err);
+    setSyncStatus('error', '연결 끊김');
     showToast('⚠ 동기화 오류가 발생했습니다. 설정을 확인해주세요.');
   });
 }
 
 function bootApp(){
-  const saved = localStorage.getItem(CONFIG_KEY);
-  if(saved){
-    try{
-      initFirebase(JSON.parse(saved));
-    }catch(e){
-      openSettings();
-      return;
-    }
+  const override = localStorage.getItem(CONFIG_KEY);
+  let config = null;
+  if(override){
+    try{ config = JSON.parse(override); }catch(e){ config = null; }
+  }
+  if(!config && HARDCODED_CONFIG.apiKey){
+    config = HARDCODED_CONFIG;
+  }
+
+  if(config){
+    initFirebase(config);
     document.getElementById('listView').classList.add('active');
   } else {
+    setSyncStatus('error', '설정 필요');
     openSettings();
   }
   renderForm();
